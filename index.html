@@ -1,0 +1,124 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Tavern — provably-fair wagers</title>
+<link rel="stylesheet" href="style.css">
+
+<div class="lantern"></div>
+
+<header>
+  <div class="sign">
+    <span class="dice">⚄</span>
+    <h1>The Tavern</h1>
+    <span class="dice flip">⚁</span>
+  </div>
+  <p class="sub">Dockside wagers, settled honestly &mdash; and provably so.</p>
+</header>
+
+<p class="warn">
+  <strong>The house here holds its own seed</strong>, so this page proves nothing
+  about itself. That is deliberate. What it is <em>for</em> is
+  <a href="#verify">checking a round somebody else settled</a> &mdash; the
+  verifier is static, offline, and you can read every line of it.
+</p>
+
+<main>
+
+  <section class="panel wager">
+    <h2><span class="num">I</span> The Wager</h2>
+
+    <div class="board">
+      <div class="dial">
+        <label for="target">Roll above</label>
+        <input id="target" type="range" min="1" max="99" value="50">
+        <output id="target-out">50</output>
+      </div>
+      <div class="odds">
+        <div class="odd"><span id="o-chance">50%</span><em>chance</em></div>
+        <div class="odd big"><span id="o-mult">1.960&times;</span><em>pays</em></div>
+        <div class="odd"><span id="o-payout">196</span><em>returns</em></div>
+      </div>
+    </div>
+
+    <div class="stake-row">
+      <label for="stake">Stake</label>
+      <input id="stake" type="number" min="1" value="100">
+      <span id="limit" class="limit"></span>
+    </div>
+
+    <div class="stake-row">
+      <label for="nonce">Your mark</label>
+      <input id="nonce" type="text" value="hello" spellcheck="false">
+      <span class="limit">goes into the hash, so the house cannot pick its seed after seeing your bet</span>
+    </div>
+
+    <div class="rollbox">
+      <div id="die" class="die">?</div>
+      <button id="roll" class="cta">Roll the bones</button>
+    </div>
+    <p id="result" class="result"></p>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">II</span> The Reckoning</h2>
+    <p class="hint">The seed was committed before you bet. Recompute it: hash the
+      seed and it must equal the commitment; hash <code>seed|mark</code> and the
+      roll must follow.</p>
+    <dl class="kv">
+      <dt>commitment <small>H(seed), published first</small></dt>
+      <dd><code id="commitment">&mdash;</code></dd>
+      <dt>revealed seed</dt><dd><code id="r-seed">&mdash;</code></dd>
+      <dt>H(seed)</dt><dd><code id="r-commit">&mdash;</code></dd>
+      <dt>H(seed|mark)</dt><dd><code id="r-hash">&mdash;</code></dd>
+    </dl>
+    <p id="verdict" class="verdict"></p>
+    <div class="row"><button id="new-round" class="ghost">Fresh seed</button></div>
+  </section>
+
+  <section class="panel" id="verify">
+    <h2><span class="num">III</span> The Verifier</h2>
+    <p class="hint">Paste a round from anywhere &mdash; this page, or a server
+      that settled one months ago. Nothing here touches the network.</p>
+    <div class="grid">
+      <label>commitment <input id="v-commit" type="text" spellcheck="false" placeholder="hash published before the bet"></label>
+      <label>seed <input id="v-seed" type="text" spellcheck="false" placeholder="revealed after"></label>
+      <label>mark <input id="v-nonce" type="text" spellcheck="false" placeholder="the player's nonce"></label>
+      <label>claimed roll <input id="v-roll" type="number" min="1" max="100" placeholder="optional"></label>
+    </div>
+    <div class="row"><button id="v-go">Check it</button></div>
+    <p id="v-out" class="verdict"></p>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">IV</span> The Ledger</h2>
+    <p class="hint">The bank is a liquidity pool wearing a different hat.
+      Providers deposit, hold shares, and the house edge accrues to them exactly
+      as swap fees accrue in a market. Anyone can be the house.</p>
+    <div class="ledger">
+      <div class="stat"><span id="bank">100,000</span><em>bankroll</em></div>
+      <div class="stat"><span id="shares">100,000</span><em>shares out</em></div>
+      <div class="stat"><span id="mine">10,000</span><em>your shares</em></div>
+      <div class="stat gold"><span id="worth">10,000</span><em>your stake worth</em></div>
+    </div>
+    <div class="grid">
+      <label>deposit <input id="dep" type="number" min="1" value="1000"></label>
+      <label>withdraw shares <input id="wd" type="number" min="1" value="1000"></label>
+    </div>
+    <div class="row">
+      <button id="do-dep">Buy in</button>
+      <button id="do-wd" class="ghost">Cash out</button>
+      <button id="grind" class="ghost">Let the night run (500 rounds)</button>
+    </div>
+    <p id="bank-msg" class="hint"></p>
+  </section>
+
+</main>
+
+<footer>
+  <p><a href="tavern.js">tavern.js</a> is the whole of the maths &mdash; pure, no
+    dependencies, no clock, no network. <a href="tests.js">tests.js</a> runs it
+    with <code>node tests.js</code>.</p>
+  <p class="hint">AGPL-3.0-or-later &middot; play money only &middot; sibling of
+    <a href="https://github.com/melvincarvalho/tidepool">tidepool</a></p>
+</footer>
+
+<script type="module" src="app.js"></script>

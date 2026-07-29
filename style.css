@@ -1,0 +1,246 @@
+/* The Tavern — parchment under lantern-light, on Tideholm's own sea palette. */
+
+:root {
+  --sea:        #0e2a3f;
+  --sea-deep:   #081a29;
+  --sand:       #f0e6d0;
+  --paper:      #faf5e8;
+  --ink:        #2b2417;
+  --ink-soft:   #6b5c42;
+  --accent:     #b8860b;
+  --accent-lit: #e0a92a;
+  --win:        #2f6b3a;
+  --lose:       #a02020;
+  --rule:       rgba(160,128,70,.35);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 1rem 4rem;
+  background:
+    radial-gradient(ellipse at 50% -10%, #1d4a6b 0%, transparent 55%),
+    linear-gradient(#0e2a3f 0%, #081a29 100%);
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.55;
+  min-height: 100vh;
+}
+
+/* a warm pool of light from above, like a lantern over the table */
+.lantern {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse 70% 45% at 50% 0%, rgba(255,214,140,.16), transparent 70%);
+}
+
+header, main, footer { position: relative; z-index: 1; max-width: 62rem; margin: 0 auto; }
+
+/* ------------------------------------------------------------ signboard */
+
+header { text-align: center; padding: 2.6rem 0 1.4rem; }
+
+.sign {
+  display: inline-flex; align-items: center; gap: 1rem;
+  padding: .5rem 2rem 1rem;
+  border-bottom: 2px solid var(--accent);
+}
+.sign h1 {
+  margin: 0;
+  font-size: clamp(2.1rem, 6vw, 3.2rem);
+  letter-spacing: .06em;
+  color: var(--sand);
+  text-shadow: 0 2px 0 #000, 0 0 26px rgba(224,169,42,.35);
+}
+.dice {
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  color: var(--accent-lit);
+  text-shadow: 0 0 14px rgba(224,169,42,.5);
+}
+.dice.flip { transform: scaleX(-1); }
+
+header .sub {
+  margin: .9rem auto 0; max-width: 34rem;
+  color: #cbb98f; font-style: italic;
+}
+
+/* ------------------------------------------------------------ notice */
+
+.warn {
+  max-width: 62rem; margin: 0 auto 2rem; position: relative; z-index: 1;
+  padding: .9rem 1.2rem;
+  background: rgba(160,32,32,.14);
+  border: 1px solid rgba(224,120,80,.4);
+  border-left: 4px solid #c0563a;
+  border-radius: 3px;
+  color: #f0dcc8; font-size: .93rem;
+}
+.warn strong { color: #ffd9a0; }
+.warn a { color: var(--accent-lit); }
+
+/* ------------------------------------------------------------ panels */
+
+.panel {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255,248,225,.55), transparent 62%),
+    linear-gradient(#faf5e8, #efe3c8);
+  border: 1px solid #c9b68c;
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.45), inset 0 0 60px rgba(190,160,105,.18);
+  padding: 1.4rem 1.6rem 1.7rem;
+  margin: 0 0 1.6rem;
+}
+
+.panel h2 {
+  margin: 0 0 1rem;
+  font-size: 1.3rem; font-weight: normal; letter-spacing: .04em;
+  display: flex; align-items: baseline; gap: .7rem;
+  border-bottom: 1px solid var(--rule); padding-bottom: .5rem;
+}
+.num {
+  font-size: .8rem; letter-spacing: .18em; color: var(--accent);
+  border: 1px solid var(--rule); border-radius: 2px;
+  padding: .1rem .45rem;
+}
+
+.hint { color: var(--ink-soft); font-size: .9rem; margin: .4rem 0 1rem; }
+.hint.over { color: var(--lose); font-weight: bold; }
+
+/* ------------------------------------------------------------ the board */
+
+.board {
+  display: grid; grid-template-columns: 1fr auto; gap: 1.4rem; align-items: center;
+  padding: 1rem 1.2rem; margin-bottom: 1rem;
+  background: rgba(255,246,220,.5);
+  border: 1px solid var(--rule); border-radius: 3px;
+}
+
+.dial label { display: block; font-size: .85rem; color: var(--ink-soft); letter-spacing: .08em; text-transform: uppercase; }
+.dial { display: grid; grid-template-columns: 1fr auto; gap: .2rem 1rem; align-items: center; }
+.dial label { grid-column: 1 / -1; }
+
+input[type=range] {
+  width: 100%; accent-color: var(--accent); height: 1.6rem;
+}
+#target-out {
+  font-size: 2rem; color: var(--accent); min-width: 2.6ch; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.odds { display: flex; gap: 1.1rem; text-align: center; }
+.odd span { display: block; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.odd.big span { font-size: 1.7rem; color: var(--accent); }
+.odd em { font-style: normal; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+
+.stake-row { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; margin: .6rem 0; }
+.stake-row label { min-width: 6rem; font-size: .85rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
+.limit { font-size: .82rem; color: var(--ink-soft); }
+.limit.over { color: var(--lose); font-weight: bold; }
+
+input[type=number], input[type=text] {
+  font-family: Verdana, Geneva, sans-serif; font-size: .95rem;
+  padding: .45rem .6rem;
+  background: #fffdf6; color: var(--ink);
+  border: 1px solid #c3ad81; border-radius: 2px;
+  min-width: 8rem;
+}
+input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ------------------------------------------------------------ the die */
+
+.rollbox { display: flex; align-items: center; gap: 1.4rem; margin-top: 1.2rem; flex-wrap: wrap; }
+
+.die {
+  width: 5.2rem; height: 5.2rem; flex: none;
+  display: grid; place-items: center;
+  font-size: 2.1rem; font-variant-numeric: tabular-nums;
+  background: linear-gradient(160deg, #fffdf5, #e6d8b6);
+  border: 2px solid #b09a6c; border-radius: 12px;
+  box-shadow: inset 0 -4px 10px rgba(150,120,70,.3), 0 4px 12px rgba(0,0,0,.25);
+  color: var(--ink);
+  transition: transform .25s ease, border-color .25s, color .25s;
+}
+.die.rolling { animation: tumble .55s ease; }
+.die.win  { border-color: var(--win);  color: var(--win); }
+.die.lose { border-color: var(--lose); color: var(--lose); }
+
+@keyframes tumble {
+  0%   { transform: rotate(0)      scale(1); }
+  35%  { transform: rotate(-16deg) scale(1.12); }
+  70%  { transform: rotate(12deg)  scale(.96); }
+  100% { transform: rotate(0)      scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .die.rolling { animation: none; } }
+
+/* ------------------------------------------------------------ buttons */
+
+button {
+  font-family: Georgia, serif; font-size: .95rem; letter-spacing: .04em;
+  padding: .55rem 1.2rem; cursor: pointer;
+  background: linear-gradient(#d9b95f, #b8860b);
+  color: #2b2417; border: 1px solid #8a6608; border-radius: 3px;
+  box-shadow: 0 2px 0 #7a5a07, 0 3px 8px rgba(0,0,0,.25);
+}
+button:hover { background: linear-gradient(#e6c76d, #c8930f); }
+button:active { transform: translateY(2px); box-shadow: 0 0 0 #7a5a07; }
+button.ghost {
+  background: transparent; color: var(--ink-soft);
+  border: 1px solid var(--rule); box-shadow: none;
+}
+button.ghost:hover { background: rgba(184,134,11,.12); color: var(--ink); }
+button.cta { font-size: 1.05rem; padding: .7rem 1.6rem; }
+
+.row { display: flex; gap: .8rem; align-items: center; flex-wrap: wrap; margin-top: .8rem; }
+
+/* ------------------------------------------------------------ results */
+
+.result { margin: 1rem 0 0; font-size: 1.05rem; min-height: 1.6rem; }
+.result.good { color: var(--win); }
+.result.bad  { color: var(--lose); }
+
+.verdict { margin: .9rem 0 0; font-size: .95rem; min-height: 1.4rem; }
+.verdict.good { color: var(--win); font-weight: bold; }
+.verdict.bad  { color: var(--lose); font-weight: bold; }
+
+/* ------------------------------------------------------------ key/value */
+
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: .4rem 1.2rem; margin: 0; }
+.kv dt { color: var(--ink-soft); font-size: .88rem; }
+.kv dt small { display: block; font-size: .78rem; opacity: .8; }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.kv code, code {
+  font-family: 'DejaVu Sans Mono', Menlo, Consolas, monospace;
+  font-size: .8rem; color: #4a3c22;
+  background: rgba(184,134,11,.1); padding: .1rem .3rem; border-radius: 2px;
+}
+
+/* ------------------------------------------------------------ ledger */
+
+.ledger {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 1px; margin-bottom: 1.2rem;
+  background: var(--rule); border: 1px solid var(--rule); border-radius: 3px;
+  overflow: hidden;
+}
+.stat { background: rgba(255,246,220,.6); padding: .8rem 1rem; text-align: center; }
+.stat span { display: block; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.stat em { font-style: normal; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+.stat.gold span { color: var(--accent); }
+
+/* ------------------------------------------------------------ forms */
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .9rem; margin: .8rem 0; }
+.grid label { display: grid; gap: .25rem; font-size: .85rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+
+/* ------------------------------------------------------------ footer */
+
+footer { text-align: center; margin-top: 2.5rem; color: #9db1c4; font-size: .88rem; }
+footer a { color: var(--accent-lit); }
+footer .hint { color: #7a90a6; }
+
+@media (max-width: 40rem) {
+  .board { grid-template-columns: 1fr; }
+  .odds { justify-content: space-between; }
+  .stake-row label { min-width: 100%; }
+}
