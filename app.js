@@ -185,13 +185,17 @@ async function sealTools() {
 }
 
 /** Sign one +/- move of sealed gold, chained onto the segment. */
-async function signSealTx(delta) {
+async function signSealTx(delta, bet) {
   const { core, signer } = await sealTools();
   const s = loadSeg();
   const prev = s.base + s.txs.reduce((a, t) => a + t.delta, 0);
   const t = { did: SEAL.did, prev, delta, next: prev + delta };
   t.sig = await signer.sign(core.transitionBytes(t));
   t.pubkey = signer.pubkey;
+  // The bet evidence rides OUTSIDE the signature — it is not a claim, it is a
+  // pointer to public chain data (height, mark, target, stake) from which the
+  // game's server re-derives the roll and payout itself. Provable > trusted.
+  if (bet) t.bet = bet;
   s.txs.push(t);
   saveSeg(s);
   return t;
@@ -346,15 +350,18 @@ async function tideBet() {
   }
   let height;
   try { height = Number(await tideText('/blocks/tip/height')); } catch (e) { return sayTide(e.message, true); }
+  const mark = $('tide-nonce').value || randomSeed().slice(0, 16);
   if (SEAL) {
     // The stake leaves the purse NOW, as a signed trail move — win or lose,
-    // this transition stands; a win signs its payout at settlement.
-    try { await signSealTx(-q.stake); } catch (e) { return sayTide(e.message, true); }
+    // this transition stands; a win signs its payout at settlement. Both moves
+    // carry the bet evidence so the game can verify the round from the chain.
+    try { await signSealTx(-q.stake, { height, mark, target: q.target, stake: q.stake }); }
+    catch (e) { return sayTide(e.message, true); }
   }
   const bets = loadTide();
   bets.push({
     height,                       // block height+1 is the seed nobody has seen
-    nonce: $('tide-nonce').value || randomSeed().slice(0, 16),
+    nonce: mark,
     target: q.target,
     stake: q.stake,
     sealed: !!SEAL,
@@ -390,7 +397,8 @@ async function tideCheck() {
       const win = r > b.target;
       const payout = win ? Math.floor(q.payout) : 0;
       if (win) {
-        try { await signSealTx(payout); } catch (e) { sayTide(e.message, true); continue; }
+        try { await signSealTx(payout, { height: b.height, mark: b.nonce, target: b.target, stake: b.stake }); }
+        catch (e) { sayTide(e.message, true); continue; }
       }
       Object.assign(b, { status: win ? 'won' : 'lost', roll: r, payout, blockHash, hash });
       settled++;
