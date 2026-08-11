@@ -19,6 +19,8 @@
   about itself. That is deliberate. What it is <em>for</em> is
   <a href="#verify">checking a round somebody else settled</a> &mdash; the
   verifier is static, offline, and you can read every line of it.
+  The one exception is <a href="#tide">the Tide</a>: its seed is the next
+  Bitcoin block, which nobody &mdash; not this page, not any house &mdash; holds.
 </p>
 
 <main>
@@ -58,8 +60,28 @@
     <p id="result" class="result"></p>
   </section>
 
+  <section class="panel" id="tide">
+    <h2><span class="num">II</span> The Tide</h2>
+    <p class="hint">The wager above trusts this page's seed. This one trusts
+      nobody's: the seed is the hash of the <strong>next Bitcoin block</strong>
+      (testnet4) &mdash; it does not exist when you bet, and no one alive can
+      choose it. The dial above sets your odds; the tide settles them when it
+      comes in. Blocks arrive when they please, so a wager can ride a while.</p>
+    <div class="stake-row">
+      <label for="tide-nonce">Your mark</label>
+      <input id="tide-nonce" type="text" value="" spellcheck="false">
+      <span class="limit">salts your roll &mdash; two bets riding the same block get different dice</span>
+    </div>
+    <div class="row">
+      <button id="tide-bet" class="cta">Cast to the tide</button>
+      <button id="tide-check" class="ghost">Has the tide come in?</button>
+    </div>
+    <div id="tide-bets"></div>
+    <p id="tide-msg" class="hint"></p>
+  </section>
+
   <section class="panel">
-    <h2><span class="num">II</span> The Reckoning</h2>
+    <h2><span class="num">III</span> The Reckoning</h2>
     <p class="hint">The seed was committed before you bet. Recompute it: hash the
       seed and it must equal the commitment; hash <code>seed|mark</code> and the
       roll must follow.</p>
@@ -75,7 +97,7 @@
   </section>
 
   <section class="panel" id="verify">
-    <h2><span class="num">III</span> The Verifier</h2>
+    <h2><span class="num">IV</span> The Verifier</h2>
     <p class="hint">Paste a round from anywhere &mdash; this page, or a server
       that settled one months ago. Nothing here touches the network.</p>
     <div class="grid">
@@ -89,7 +111,7 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">IV</span> The Ledger</h2>
+    <h2><span class="num">V</span> The Ledger</h2>
     <p class="hint">The bank is a liquidity pool wearing a different hat.
       Providers deposit, hold shares, and the house edge accrues to them exactly
       as swap fees accrue in a market. Anyone can be the house.</p>

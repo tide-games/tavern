@@ -134,6 +134,121 @@ async function roll() {
   paintQuote();
 }
 
+// ---------------------------------------------------------------- the tide
+//
+// The block-seed wager. The seed is the hash of the next testnet4 block: it
+// does not exist at bet time, so there is nothing for any house to commit to
+// or shop for — the chain is the commitment. The player's mark still salts the
+// roll, so bets riding the same block get different dice. This is the one part
+// of the page that touches the network, and only when a button is pressed.
+
+const TIDE_API = 'https://mempool.space/testnet4/api';
+const TIDE_KEY = 'tavern-tide-bets';
+
+function loadTide() {
+  try { return JSON.parse(localStorage.getItem(TIDE_KEY)) || []; } catch { return []; }
+}
+function saveTide(bets) { localStorage.setItem(TIDE_KEY, JSON.stringify(bets)); }
+
+async function tideText(path) {
+  const r = await fetch(`${TIDE_API}${path}`);
+  if (!r.ok) throw new Error(`the tide is unreadable (${r.status})`);
+  return (await r.text()).trim();
+}
+
+function sayTide(msg, bad) {
+  $('tide-msg').textContent = msg;
+  $('tide-msg').className = bad ? 'hint over' : 'hint';
+}
+
+async function tideBet() {
+  const target = Number($('target').value);
+  const stake = Number($('stake').value);
+  const q = T.quote(target, stake, OPTS);
+  if (q.error) return sayTide(`Refused: ${q.error}.`, true);
+  const max = T.maxStake(state.bank, target, OPTS);
+  if (q.stake > max) return sayTide(`Over the house limit — most it will take here is ${fmt(max)}.`, true);
+  let height;
+  try { height = Number(await tideText('/blocks/tip/height')); } catch (e) { return sayTide(e.message, true); }
+  const bets = loadTide();
+  bets.push({
+    height,                       // block height+1 is the seed nobody has seen
+    nonce: $('tide-nonce').value || randomSeed().slice(0, 16),
+    target: q.target,
+    stake: q.stake,
+    status: 'riding',
+    at: Date.now(),
+  });
+  saveTide(bets);
+  $('tide-nonce').value = randomSeed().slice(0, 16); // fresh mark for the next cast
+  sayTide(`Cast. Block ${(height + 1).toLocaleString('en-GB')} decides — press the button when the tide turns.`);
+  paintTide();
+}
+
+async function tideCheck() {
+  const bets = loadTide();
+  const riding = bets.filter((b) => b.status === 'riding');
+  if (!riding.length) return sayTide('Nothing riding.');
+  let tip;
+  try { tip = Number(await tideText('/blocks/tip/height')); } catch (e) { return sayTide(e.message, true); }
+  let settled = 0;
+  for (const b of riding) {
+    if (b.height + 1 > tip) continue;               // that block is still at sea
+    let blockHash;
+    try { blockHash = (await tideText(`/block-height/${b.height + 1}`)).toLowerCase(); }
+    catch { continue; }                             // next press will find it
+    const hash = await sha256(`${blockHash}|${b.nonce}`);
+    const r = T.rollFromHash(hash);
+    const out = T.settle({ bankroll: state.bank, target: b.target, stake: b.stake, roll: r, opts: OPTS });
+    if (out.error) { b.status = 'refused'; b.reason = out.error; continue; }
+    state.bank = out.bankroll;
+    Object.assign(b, {
+      status: out.win ? 'won' : 'lost',
+      roll: out.roll,
+      payout: out.payout,
+      blockHash,
+      hash,
+    });
+    settled++;
+  }
+  saveTide(bets);
+  sayTide(settled
+    ? `${settled} wager${settled > 1 ? 's' : ''} settled by the chain.`
+    : 'The deciding block is still at sea. Blocks come when they please.');
+  paintBank(); paintQuote(); paintTide();
+}
+
+function paintTide() {
+  const list = $('tide-bets');
+  list.textContent = '';
+  const bets = loadTide();
+  for (const b of [...bets].reverse().slice(0, 8)) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    const head = `⚓ ${fmt(b.stake)} above ${b.target}`;
+    if (b.status === 'riding') {
+      p.textContent = `${head} — riding; block ${(b.height + 1).toLocaleString('en-GB')} decides.`;
+    } else if (b.status === 'refused') {
+      p.textContent = `${head} — refused at settlement: ${b.reason}.`;
+    } else {
+      p.textContent = `${head} — the chain rolled ${b.roll}: `
+        + (b.status === 'won' ? `you take ${fmt(b.payout)}. ` : 'the bank keeps it. ');
+      const a = document.createElement('a');
+      a.href = '#verify';
+      a.textContent = 'check it';
+      a.addEventListener('click', () => {
+        // hand the round to the verifier: block hash as the seed, no commitment
+        $('v-commit').value = '';
+        $('v-seed').value = b.blockHash;
+        $('v-nonce').value = b.nonce;
+        $('v-roll').value = String(b.roll);
+      });
+      p.appendChild(a);
+    }
+    list.appendChild(p);
+  }
+}
+
 // ---------------------------------------------------------------- verifier
 
 async function verify() {
@@ -141,6 +256,25 @@ async function verify() {
   const seed = $('v-seed').value.trim();
   const nonce = $('v-nonce').value;
   const rollRaw = $('v-roll').value.trim();
+  if (!commitment && seed) {
+    // A tide round: the seed is a block hash, and the chain itself is the
+    // commitment — there is nothing else to check it against here. Verify the
+    // roll follows, and send the reader to any block explorer for the hash.
+    const hash = await sha256(`${seed}|${nonce}`);
+    const expected = T.rollFromHash(hash);
+    if (expected == null) {
+      $('v-out').textContent = '✗ the seed is not a usable hash.';
+      $('v-out').className = 'verdict bad';
+      return;
+    }
+    const claimed = rollRaw === '' ? null : Math.floor(Number(rollRaw));
+    const ok = claimed == null || claimed === expected;
+    $('v-out').textContent = ok
+      ? `✓ the roll follows: ${expected}. Block-seed round — confirm the block hash itself on any explorer.`
+      : `✗ the roll does not follow from the hash — it should have been ${expected}.`;
+    $('v-out').className = 'verdict ' + (ok ? 'good' : 'bad');
+    return;
+  }
   if (!commitment || !seed) {
     $('v-out').textContent = 'Paste at least a commitment and a seed.';
     $('v-out').className = 'verdict';
@@ -224,7 +358,19 @@ $('v-go').addEventListener('click', verify);
 $('do-dep').addEventListener('click', deposit);
 $('do-wd').addEventListener('click', withdraw);
 $('grind').addEventListener('click', grind);
+$('tide-bet').addEventListener('click', tideBet);
+$('tide-check').addEventListener('click', tideCheck);
 for (const id of ['target', 'stake']) $(id).addEventListener('input', paintQuote);
+
+// Query-string prefill — the modular seam for other apps: a game can send a
+// player here with ?stake=&target=&mark= and the table is already set.
+{
+  const qp = new URLSearchParams(location.search);
+  if (qp.get('stake')) $('stake').value = qp.get('stake');
+  if (qp.get('target')) $('target').value = qp.get('target');
+  $('tide-nonce').value = qp.get('mark') || randomSeed().slice(0, 16);
+}
 
 paintBank();
 newRound();
+paintTide();

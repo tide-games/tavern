@@ -53,6 +53,26 @@ Hashing is the caller's job. The module takes hex strings, because the hash
 function differs by host — WebCrypto in a browser, `node:crypto` on a server —
 and the maths should not care.
 
+### The Tide — when the chain holds the seed
+
+The scheme above needs a party you trust to publish the commitment. The
+**Tide** wager on the page needs nobody: the seed is the hash of the **next
+Bitcoin block** (testnet4). It does not exist when the bet is placed, so there
+is nothing to commit to and nothing to shop for — the chain *is* the
+commitment. The player's mark still salts the roll:
+
+```
+bet at tip height H, with mark
+seed = hash of block H+1          (nobody's to choose)
+roll = rollFromHash(H(seed | mark))
+```
+
+Anyone can verify a Tide round forever: the block hash is public, the mark and
+roll are recorded, and the verifier accepts block-seed rounds (leave the
+commitment blank). This is the client-side page's honest mode — no server, no
+trust, and the maths in `tavern.js` unchanged. Blocks arrive when they please;
+a wager rides until the tide comes in.
+
 ### What the static page cannot do
 
 Commit–reveal only means something when the party publishing the commitment
