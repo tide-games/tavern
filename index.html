@@ -112,8 +112,24 @@
     <p id="v-out" class="verdict"></p>
   </section>
 
+  <section class="panel" id="log">
+    <h2><span class="num">V</span> The Log</h2>
+    <p class="hint">The tavern keeps its book: every tide wager, kept and countable
+      &mdash; quick rolls at the bar are not entered. Settled slips are archived,
+      not burned; the whole book is yours to take.</p>
+    <div class="ledger">
+      <div class="stat"><span id="log-rounds">0</span><em>wagers</em></div>
+      <div class="stat"><span id="log-staked">0</span><em>staked</em></div>
+      <div class="stat"><span id="log-returned">0</span><em>returned</em></div>
+      <div class="stat gold"><span id="log-net">0</span><em>net</em></div>
+    </div>
+    <div id="log-list"></div>
+    <p class="hint"><a id="log-export" href="#" download="tavern-book.json">Take the book</a>
+      <span id="log-slips"></span></p>
+  </section>
+
   <section class="panel">
-    <h2><span class="num">V</span> The Ledger</h2>
+    <h2><span class="num">VI</span> The Ledger</h2>
     <p class="hint">The bank is a liquidity pool wearing a different hat.
       Providers deposit, hold shares, and the house edge accrues to them exactly
       as swap fees accrue in a market. Anyone can be the house.</p>

@@ -224,10 +224,85 @@ function paintSeal() {
   wipe.title = 'only after the game has accepted it — a wiped slip is gone';
   wipe.addEventListener('click', (ev) => {
     ev.preventDefault();
-    saveSeg({ base: purse(), txs: [] }); // the purse carries over; the moves are spent
-    paintSeal();
+    const cur = loadSeg();
+    if (cur.txs.length) archiveSlip(cur.txs); // the book keeps what the slip settled
+    saveSeg({ base: purse(), txs: [] });      // the purse carries over; the moves are spent
+    paintSeal(); paintLog();
   });
   slip.appendChild(wipe);
+}
+
+// ---------------------------------------------------------------- the log
+//
+// The tavern keeps its book. Every tide wager stays in the bets store (capped,
+// oldest trimmed); settled slips are ARCHIVED on wipe rather than burned, so
+// the signed history of a night survives its redemption. "Take the book"
+// exports the lot as JSON — it is the player's record, not the tavern's.
+
+const SLIPS_KEY = 'tavern-seal-slips';
+const LOG_SHOW = 30;
+
+function loadSlips() {
+  try { return JSON.parse(localStorage.getItem(SLIPS_KEY)) || []; } catch { return []; }
+}
+function archiveSlip(txs) {
+  const slips = loadSlips();
+  slips.push({ at: Date.now(), did: SEAL && SEAL.did, txs });
+  localStorage.setItem(SLIPS_KEY, JSON.stringify(slips));
+}
+
+function paintLog() {
+  const list = $('log-list');
+  if (!list) return;
+  const bets = loadTide();
+  const done = bets.filter((b) => b.status !== 'riding');
+  const staked = done.reduce((a, b) => a + b.stake, 0);
+  const returned = done.reduce((a, b) => a + (b.payout || 0), 0);
+  $('log-rounds').textContent = fmt(bets.length);
+  $('log-staked').textContent = fmt(staked);
+  $('log-returned').textContent = fmt(returned);
+  $('log-net').textContent = (returned - staked >= 0 ? '+' : '') + fmt(returned - staked);
+
+  list.textContent = '';
+  for (const b of [...bets].reverse().slice(0, LOG_SHOW)) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    const when = new Date(b.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const mode = b.sealed ? '⚑ ' : '';
+    if (b.status === 'riding') {
+      p.textContent = `${when} · ${mode}${fmt(b.stake)} above ${b.target} — riding, block ${(b.height + 1).toLocaleString('en-GB')} decides`;
+    } else if (b.status === 'refused') {
+      p.textContent = `${when} · ${mode}${fmt(b.stake)} above ${b.target} — refused: ${b.reason}`;
+    } else {
+      p.textContent = `${when} · ${mode}${fmt(b.stake)} above ${b.target} — rolled ${b.roll}, `
+        + (b.status === 'won' ? `won ${fmt(b.payout)} ` : 'the sea kept it ');
+      const a = document.createElement('a');
+      a.href = '#verify';
+      a.textContent = 'verify';
+      a.addEventListener('click', () => {
+        $('v-commit').value = '';
+        $('v-seed').value = b.blockHash;
+        $('v-nonce').value = b.nonce;
+        $('v-roll').value = String(b.roll);
+      });
+      p.appendChild(a);
+    }
+    list.appendChild(p);
+  }
+  if (bets.length > LOG_SHOW) {
+    const more = document.createElement('p');
+    more.className = 'hint';
+    more.textContent = `… and ${fmt(bets.length - LOG_SHOW)} older, kept in the book.`;
+    list.appendChild(more);
+  }
+
+  const slips = loadSlips();
+  $('log-slips').textContent = slips.length
+    ? ` · ${slips.length} settled slip${slips.length > 1 ? 's' : ''} archived (${slips.reduce((a, s) => a + s.txs.length, 0)} signed moves)`
+    : '';
+  const book = { bets, slips, exported: null };
+  $('log-export').href = 'data:application/json;charset=utf-8,'
+    + encodeURIComponent(JSON.stringify(book, null, 2));
 }
 
 // ---------------------------------------------------------------- the tide
@@ -244,7 +319,7 @@ const TIDE_KEY = 'tavern-tide-bets';
 function loadTide() {
   try { return JSON.parse(localStorage.getItem(TIDE_KEY)) || []; } catch { return []; }
 }
-function saveTide(bets) { localStorage.setItem(TIDE_KEY, JSON.stringify(bets)); }
+function saveTide(bets) { localStorage.setItem(TIDE_KEY, JSON.stringify(bets.slice(-200))); } // the book keeps the last 200
 
 async function tideText(path) {
   const r = await fetch(`${TIDE_API}${path}`);
@@ -289,7 +364,7 @@ async function tideBet() {
   saveTide(bets);
   $('tide-nonce').value = randomSeed().slice(0, 16); // fresh mark for the next cast
   sayTide(`Cast. Block ${(height + 1).toLocaleString('en-GB')} decides — press the button when the tide turns.`);
-  paintTide(); paintSeal();
+  paintTide(); paintSeal(); paintLog();
 }
 
 async function tideCheck() {
@@ -337,7 +412,7 @@ async function tideCheck() {
   sayTide(settled
     ? `${settled} wager${settled > 1 ? 's' : ''} settled by the chain.`
     : 'The deciding block is still at sea. Blocks come when they please.');
-  paintBank(); paintQuote(); paintTide(); paintSeal();
+  paintBank(); paintQuote(); paintTide(); paintSeal(); paintLog();
 }
 
 function paintTide() {
@@ -497,3 +572,4 @@ paintBank();
 newRound();
 paintTide();
 paintSeal();
+paintLog();
