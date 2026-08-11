@@ -134,6 +134,102 @@ async function roll() {
   paintQuote();
 }
 
+// ---------------------------------------------------------------- sealed mode
+//
+// The courier PoC (#146 without pods): a game sends the player here with
+// ?did=&seal=&return=, the purse is their SEALED balance, and every stake and
+// payout is a REAL trail transition signed in this browser with the same nostr
+// key the seal uses (tidegate's keySigner — entered once per origin). The
+// player then carries the signed slip home in a query string, and the game
+// replays it into the seal. The trail is a signed document; the player is the
+// transport. Pods later change WHERE the trail lives, not this shape.
+
+const SEAL = (() => {
+  const qp = new URLSearchParams(location.search);
+  const did = (qp.get('did') || '').trim().toLowerCase();
+  if (!/^did:nostr:[0-9a-f]{64}$/.test(did)) return null;
+  return {
+    did,
+    seal: Math.max(0, Math.floor(Number(qp.get('seal')) || 0)),
+    ret: qp.get('return') || 'https://nostr.social/tideholm/',
+  };
+})();
+const segKey = () => 'tavern-seal-' + SEAL.did.slice(-8);
+
+function loadSeg() {
+  try {
+    const s = JSON.parse(localStorage.getItem(segKey()));
+    if (s && Number.isFinite(s.base) && Array.isArray(s.txs)) return s;
+  } catch { /* fresh */ }
+  return { base: SEAL.seal, txs: [] };
+}
+function saveSeg(s) { localStorage.setItem(segKey(), JSON.stringify(s)); }
+
+/** The purse: what the seal is worth here right now. */
+function purse() {
+  const s = loadSeg();
+  return s.base + s.txs.reduce((a, t) => a + t.delta, 0);
+}
+
+let _sealTools = null;
+async function sealTools() {
+  if (_sealTools) return _sealTools;
+  const base = 'https://melvincarvalho.github.io/tidegate/';
+  const [core, keys] = await Promise.all([import(base + 'tidegate.js'), import(base + 'keys.js')]);
+  const signer = await keys.keySigner(); // prompts for the key once, per origin
+  if (signer.pubkey !== SEAL.did.slice('did:nostr:'.length)) {
+    throw new Error('the stored key does not match this identity');
+  }
+  _sealTools = { core, signer };
+  return _sealTools;
+}
+
+/** Sign one +/- move of sealed gold, chained onto the segment. */
+async function signSealTx(delta) {
+  const { core, signer } = await sealTools();
+  const s = loadSeg();
+  const prev = s.base + s.txs.reduce((a, t) => a + t.delta, 0);
+  const t = { did: SEAL.did, prev, delta, next: prev + delta };
+  t.sig = await signer.sign(core.transitionBytes(t));
+  t.pubkey = signer.pubkey;
+  s.txs.push(t);
+  saveSeg(s);
+  return t;
+}
+
+const b64url = (s) => btoa(unescape(encodeURIComponent(s)))
+  .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+function paintSeal() {
+  if (!SEAL) return;
+  const p = $('seal-purse');
+  p.hidden = false;
+  p.innerHTML = `⚑ <strong>Sealed mode</strong> — playing for the gold of `
+    + `<code>${SEAL.did.slice(0, 16)}…${SEAL.did.slice(-4)}</code>. `
+    + `Purse: <strong>${fmt(purse())}</strong>. Stakes and winnings are signed trail moves, not play money.`;
+  const s = loadSeg();
+  const slip = $('seal-slip');
+  if (!s.txs.length) { slip.hidden = true; return; }
+  const net = s.txs.reduce((a, t) => a + t.delta, 0);
+  slip.hidden = false;
+  slip.textContent = `Slip: ${s.txs.length} signed move${s.txs.length > 1 ? 's' : ''}, net ${net >= 0 ? '+' : ''}${fmt(net)}. `;
+  const a = document.createElement('a');
+  a.href = `${SEAL.ret}?tavern=${b64url(JSON.stringify(s.txs))}`;
+  a.textContent = 'Settle up ↗';
+  slip.appendChild(a);
+  slip.appendChild(document.createTextNode(' · '));
+  const wipe = document.createElement('a');
+  wipe.href = '#';
+  wipe.textContent = 'wipe the slip';
+  wipe.title = 'only after the game has accepted it — a wiped slip is gone';
+  wipe.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    saveSeg({ base: purse(), txs: [] }); // the purse carries over; the moves are spent
+    paintSeal();
+  });
+  slip.appendChild(wipe);
+}
+
 // ---------------------------------------------------------------- the tide
 //
 // The block-seed wager. The seed is the hash of the next testnet4 block: it
@@ -163,26 +259,37 @@ function sayTide(msg, bad) {
 
 async function tideBet() {
   const target = Number($('target').value);
-  const stake = Number($('stake').value);
+  // Sealed gold is whole gold; play money can be fractional.
+  const stake = SEAL ? Math.floor(Number($('stake').value)) : Number($('stake').value);
   const q = T.quote(target, stake, OPTS);
   if (q.error) return sayTide(`Refused: ${q.error}.`, true);
-  const max = T.maxStake(state.bank, target, OPTS);
-  if (q.stake > max) return sayTide(`Over the house limit — most it will take here is ${fmt(max)}.`, true);
+  if (SEAL) {
+    if (q.stake > purse()) return sayTide(`The purse holds ${fmt(purse())} — the sea takes no IOUs.`, true);
+  } else {
+    const max = T.maxStake(state.bank, target, OPTS);
+    if (q.stake > max) return sayTide(`Over the house limit — most it will take here is ${fmt(max)}.`, true);
+  }
   let height;
   try { height = Number(await tideText('/blocks/tip/height')); } catch (e) { return sayTide(e.message, true); }
+  if (SEAL) {
+    // The stake leaves the purse NOW, as a signed trail move — win or lose,
+    // this transition stands; a win signs its payout at settlement.
+    try { await signSealTx(-q.stake); } catch (e) { return sayTide(e.message, true); }
+  }
   const bets = loadTide();
   bets.push({
     height,                       // block height+1 is the seed nobody has seen
     nonce: $('tide-nonce').value || randomSeed().slice(0, 16),
     target: q.target,
     stake: q.stake,
+    sealed: !!SEAL,
     status: 'riding',
     at: Date.now(),
   });
   saveTide(bets);
   $('tide-nonce').value = randomSeed().slice(0, 16); // fresh mark for the next cast
   sayTide(`Cast. Block ${(height + 1).toLocaleString('en-GB')} decides — press the button when the tide turns.`);
-  paintTide();
+  paintTide(); paintSeal();
 }
 
 async function tideCheck() {
@@ -199,6 +306,21 @@ async function tideCheck() {
     catch { continue; }                             // next press will find it
     const hash = await sha256(`${blockHash}|${b.nonce}`);
     const r = T.rollFromHash(hash);
+    if (b.sealed) {
+      // Sealed rounds play against the sea, not the play bank: quote() prices
+      // it, `roll > target` decides it (settle()'s rule, minus the bankroll),
+      // and a win is a signed +payout onto the slip. If signing fails the bet
+      // keeps riding — a win must never be recorded unsigned.
+      const q = T.quote(b.target, b.stake, OPTS);
+      const win = r > b.target;
+      const payout = win ? Math.floor(q.payout) : 0;
+      if (win) {
+        try { await signSealTx(payout); } catch (e) { sayTide(e.message, true); continue; }
+      }
+      Object.assign(b, { status: win ? 'won' : 'lost', roll: r, payout, blockHash, hash });
+      settled++;
+      continue;
+    }
     const out = T.settle({ bankroll: state.bank, target: b.target, stake: b.stake, roll: r, opts: OPTS });
     if (out.error) { b.status = 'refused'; b.reason = out.error; continue; }
     state.bank = out.bankroll;
@@ -215,7 +337,7 @@ async function tideCheck() {
   sayTide(settled
     ? `${settled} wager${settled > 1 ? 's' : ''} settled by the chain.`
     : 'The deciding block is still at sea. Blocks come when they please.');
-  paintBank(); paintQuote(); paintTide();
+  paintBank(); paintQuote(); paintTide(); paintSeal();
 }
 
 function paintTide() {
@@ -374,3 +496,4 @@ for (const id of ['target', 'stake']) $(id).addEventListener('input', paintQuote
 paintBank();
 newRound();
 paintTide();
+paintSeal();
