@@ -389,7 +389,11 @@ import { riverMix } from 'https://librepoker.org/play/engine/river-solver.js';
 const $ = (s) => document.querySelector(s);
 const q = new URLSearchParams(location.search);
 const G = Math.max(20, Math.min(1000000, Math.floor(Number(q.get('gold')) || 100)));
-const SB = Math.max(1, Math.round(G / 100)), BB = 2 * SB;
+// Blinds default 5/10 — ten big blinds deep at the default hundred, a quick
+// dash to the felt. ?sb=N overrides (bb is always 2sb), clamped so at least
+// two big blinds fit the stake.
+const SB = Math.max(1, Math.min(Math.floor(G / 4), Math.floor(Number(q.get('sb')) || 5)));
+const BB = 2 * SB;
 const GLYPH = { c: '♣', d: '♦', h: '♥', s: '♠' };
 const ascii = (c) => RANKS[rankOf(c)] + 'cdhs'[suitOf(c)];
 const isRed = (a) => a[1] === 'd' || a[1] === 'h';
