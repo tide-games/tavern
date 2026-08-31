@@ -394,6 +394,53 @@ const G = Math.max(20, Math.min(1000000, Math.floor(Number(q.get('gold')) || 100
 // two big blinds fit the stake.
 const SB = Math.max(1, Math.min(Math.floor(G / 4), Math.floor(Number(q.get('sb')) || 5)));
 const BB = 2 * SB;
+
+// ---- sealed mode (#180): arrive with ?did=&seal=&return= and the stake is
+// REAL sealed gold — the same contract as the tavern's dice, same slip, same
+// localStorage segment (same origin), so dice and poker share one purse.
+const SEAL = (() => {
+  const did = (q.get('did') || '').trim().toLowerCase();
+  if (!/^did:nostr:[0-9a-f]{64}$/.test(did)) return null;
+  return {
+    did,
+    seal: Math.max(0, Math.floor(Number(q.get('seal')) || 0)),
+    ret: q.get('return') || 'https://nostr.social/tideholm/',
+  };
+})();
+const segKey = () => 'tavern-seal-' + SEAL.did.slice(-8);
+function loadSeg() {
+  try {
+    const s = JSON.parse(localStorage.getItem(segKey()));
+    if (s && Number.isFinite(s.base) && Array.isArray(s.txs)) return s;
+  } catch { /* fresh */ }
+  return { base: SEAL.seal, txs: [] };
+}
+function saveSeg(s) { localStorage.setItem(segKey(), JSON.stringify(s)); }
+function purse() { const s = loadSeg(); return s.base + s.txs.reduce((a, t) => a + t.delta, 0); }
+let _sealTools = null;
+async function sealTools() {
+  if (_sealTools) return _sealTools;
+  const base = 'https://melvincarvalho.github.io/tidegate/';
+  const [core, keys] = await Promise.all([import(base + 'tidegate.js'), import(base + 'keys.js')]);
+  const signer = await keys.keySigner();
+  if (signer.pubkey !== SEAL.did.slice('did:nostr:'.length)) throw new Error('the stored key does not match this identity');
+  _sealTools = { core, signer };
+  return _sealTools;
+}
+async function signSealTx(delta, bet) {
+  const { core, signer } = await sealTools();
+  const s = loadSeg();
+  const prev = s.base + s.txs.reduce((a, t) => a + t.delta, 0);
+  const t = { did: SEAL.did, prev, delta, next: prev + delta };
+  t.sig = await signer.sign(core.transitionBytes(t));
+  t.pubkey = signer.pubkey;
+  if (bet) t.bet = bet;   // evidence rides OUTSIDE the signature, by design
+  s.txs.push(t);
+  saveSeg(s);
+  return t;
+}
+const b64url = (x) => btoa(unescape(encodeURIComponent(x))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+let matchId = null;
 const GLYPH = { c: '♣', d: '♦', h: '♥', s: '♠' };
 const ascii = (c) => RANKS[rankOf(c)] + 'cdhs'[suitOf(c)];
 const isRed = (a) => a[1] === 'd' || a[1] === 'h';
@@ -476,8 +523,14 @@ let h = null, handNo = 0, shownBoard = 0, commit8 = '';
 const log = { game: 'den-hulimit', gold: G, sb: SB, bb: BB, started: Date.now(), hands: [] };
 
 const drawScore = () => {
-  $('#score').innerHTML = `you <b style="color:var(--gold)">${stacks[HERO].toLocaleString()}</b> · house <b style="color:var(--gold)">${stacks[BOT].toLocaleString()}</b> gold`;
+  const sealNote = SEAL ? ` · purse <b style="color:#7fd4e6">${purse().toLocaleString()}</b>` : '';
+  $('#score').innerHTML = `you <b style="color:var(--gold)">${stacks[HERO].toLocaleString()}</b> · house <b style="color:var(--gold)">${stacks[BOT].toLocaleString()}</b> gold${sealNote}`;
 };
+if (SEAL) {
+  const b = $('#denbadge');
+  b.textContent = '⚑ SEALED · real gold';
+  b.title = 'Playing for the sealed gold of ' + SEAL.did.slice(0, 20) + '… — stakes and winnings are signed trail moves.';
+}
 
 function dealCards() {
   seats[HERO].cards.innerHTML = '';
@@ -545,13 +598,31 @@ document.addEventListener('keydown', (e) => {
   if (idx != null) document.getElementById(keyTargets[idx])?.click();
 });
 
-function matchOver() {
+async function matchOver() {
   const won = stacks[HERO] > 0;
   $('#mo-title').textContent = won ? '🏆 You take the pot' : '💀 Felted';
   $('#mo-sub').textContent = won
     ? `The house is felled — ${(stacks[HERO]).toLocaleString()} gold is yours, over ${handNo} hands.`
     : `The house takes your ${G.toLocaleString()} gold over ${handNo} hands. The den never closes.`;
   won ? sWin() : sLose();
+  if (SEAL && won && matchId) {
+    $('#mo-sub').textContent += ' Signing your winnings…';
+    try {
+      await signSealTx(2 * G, { venue: 'den', mark: matchId, stake: G });
+      $('#mo-sub').textContent = $('#mo-sub').textContent.replace(' Signing your winnings…', ' Winnings signed to your slip.');
+    } catch {
+      $('#mo-sub').textContent += ' ⚠ signing failed — reopen the den with the same seal to retry.';
+    }
+  }
+  if (SEAL) {
+    const s = loadSeg();
+    const home = document.createElement('div');
+    home.className = 'sub2';
+    home.innerHTML = `<a href="${SEAL.ret}?tavern=${b64url(JSON.stringify(s.txs))}">Settle up at Tideholm ↗</a>`;
+    $('#mo-again').after(home);
+    $('#mo-again').textContent = purse() >= G ? 'NEW MATCH (same seal)' : 'PURSE TOO THIN';
+    if (purse() < G) $('#mo-again').disabled = true;
+  }
   $('#matchover').classList.add('show');
 }
 $('#mo-again').addEventListener('click', () => location.reload());
@@ -637,7 +708,25 @@ async function playHand() {
   return true;
 }
 drawScore();
-(async () => { while (await playHand()) { /* to the felt */ } })();
+(async () => {
+  if (SEAL) {
+    if (purse() < G) {
+      caption(`⚠ your purse holds ${purse().toLocaleString()} gold — not enough for a ${G.toLocaleString()}-gold match. <a href="${SEAL.ret}">Return to Tideholm</a> for more.`);
+      return;
+    }
+    caption('signing your stake into the match…');
+    try {
+      matchId = [...crypto.getRandomValues(new Uint8Array(8))].map((x) => x.toString(16).padStart(2, '0')).join('');
+      await signSealTx(-G, { venue: 'den', mark: matchId, stake: G });
+    } catch (e) {
+      caption('⚠ could not sign the stake — ' + (e.message || 'signing declined') + '. Nothing has moved.');
+      return;
+    }
+    caption('');
+    drawScore();
+  }
+  while (await playHand()) { /* to the felt */ }
+})();
 </script>
 </body>
 </html>
