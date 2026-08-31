@@ -710,6 +710,26 @@ async function playHand() {
 drawScore();
 (async () => {
   if (SEAL) {
+    // Slip hygiene: the browser may hold a SPENT slip from a settled visit —
+    // the stored purse then disagrees with the fresh seal. Only the player
+    // knows whether the old moves were redeemed, so a fresh slip is offered,
+    // never assumed (an unsettled move on a discarded slip is gold lost).
+    if (purse() < G && SEAL.seal >= G) {
+      caption(`Your browser holds an old slip (purse ${purse().toLocaleString()}) but your seal says `
+        + `<b>${SEAL.seal.toLocaleString()}</b>. If you have settled up at Tideholm since, start fresh. `
+        + `<a href="#" id="freshslip">Start a fresh slip at ${SEAL.seal.toLocaleString()} gold</a>`);
+      await new Promise((resolve) => {
+        document.getElementById('freshslip').addEventListener('click', (ev) => {
+          ev.preventDefault();
+          const olds = loadSeg();
+          if (olds.txs.length) localStorage.setItem(segKey() + '-settled-' + Date.now(), JSON.stringify(olds));
+          saveSeg({ base: SEAL.seal, txs: [] });
+          resolve();
+        });
+      });
+      caption('');
+      drawScore();
+    }
     if (purse() < G) {
       caption(`⚠ your purse holds ${purse().toLocaleString()} gold — not enough for a ${G.toLocaleString()}-gold match. <a href="${SEAL.ret}">Return to Tideholm</a> for more.`);
       return;
