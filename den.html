@@ -733,9 +733,12 @@ drawScore();
     // knows whether the old moves were redeemed, so a fresh slip is offered,
     // never assumed (an unsettled move on a discarded slip is gold lost).
     if (purse() < G && SEAL.seal >= G) {
+      const oldTxs = loadSeg().txs;
       caption(`Your browser holds an old slip (purse ${purse().toLocaleString()}) but your seal says `
-        + `<b>${SEAL.seal.toLocaleString()}</b>. If you have settled up at Tideholm since, start fresh. `
-        + `<a href="#" id="freshslip">Start a fresh slip at ${SEAL.seal.toLocaleString()} gold</a>`);
+        + `<b>${SEAL.seal.toLocaleString()}</b>. `
+        + (oldTxs.length ? `<a href="${SEAL.ret}?tavern=${b64url(JSON.stringify(oldTxs))}">Settle this slip at Tideholm first ↗</a> — or, ` : '')
+        + `if it is already settled, `
+        + `<a href="#" id="freshslip">start a fresh slip at ${SEAL.seal.toLocaleString()} gold</a>`);
       await new Promise((resolve) => {
         document.getElementById('freshslip').addEventListener('click', (ev) => {
           ev.preventDefault();
