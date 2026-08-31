@@ -328,6 +328,13 @@ a{color:#5fc7d6}
   padding:10px 26px;font-weight:800;font-size:13px;letter-spacing:.08em;cursor:pointer}
 #matchover .sub2{margin-top:14px}
 #matchover .sub2 a{color:#5fc7d6;font-size:12px;cursor:pointer}
+#matchover.peek{background:transparent;pointer-events:none}
+#matchover.peek .card2{display:none}
+#peekback{position:fixed;right:16px;bottom:16px;z-index:90;display:none;
+  background:linear-gradient(180deg,#f0c968,#b08a3e);color:#241d12;border:0;border-radius:9px;
+  padding:9px 18px;font-weight:800;font-size:12px;letter-spacing:.06em;cursor:pointer;
+  box-shadow:0 6px 18px rgba(0,0,0,.5)}
+#matchover.peek ~ #peekback, #peekback.show{display:block}
 </style>
 </head>
 <body>
@@ -374,6 +381,7 @@ a{color:#5fc7d6}
   <div id="actions"></div>
 </div>
 
+<button id="peekback">SHOW RESULT</button>
 <div id="matchover"><div class="card2">
   <h2 id="mo-title"></h2>
   <p id="mo-sub"></p>
@@ -604,6 +612,10 @@ async function matchOver() {
   $('#mo-sub').textContent = won
     ? `The house is felled — ${(stacks[HERO]).toLocaleString()} gold is yours, over ${handNo} hands.`
     : `The house takes your ${G.toLocaleString()} gold over ${handNo} hands. The den never closes.`;
+  // Let the final hand breathe before the curtain: the showdown, the golden
+  // five, and whatever beat you deserve to be SEEN (learned from the felted
+  // captain who never saw the hand).
+  await sleep(2600);
   won ? sWin() : sLose();
   if (SEAL && won && matchId) {
     $('#mo-sub').textContent += ' Signing your winnings…';
@@ -626,6 +638,12 @@ async function matchOver() {
   $('#matchover').classList.add('show');
 }
 $('#mo-again').addEventListener('click', () => location.reload());
+// Click the felt behind the modal to peek at the final hand; the chip brings
+// the result back.
+$('#matchover').addEventListener('click', (e) => {
+  if (e.target === $('#matchover')) { $('#matchover').classList.add('peek'); $('#peekback').classList.add('show'); }
+});
+$('#peekback').addEventListener('click', () => { $('#matchover').classList.remove('peek'); $('#peekback').classList.remove('show'); });
 $('#mo-log').addEventListener('click', async () => {
   log.finished = Date.now(); log.final = { you: stacks[HERO], house: stacks[BOT] };
   try { await navigator.clipboard.writeText(JSON.stringify(log)); $('#mo-log').textContent = 'copied ✓'; } catch { /* http */ }
