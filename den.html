@@ -631,7 +631,7 @@ async function matchOver() {
     const home = document.createElement('div');
     home.className = 'sub2';
     home.innerHTML = `<a href="${SEAL.ret}?tavern=${b64url(JSON.stringify(s.txs))}">Settle up at Tideholm ↗</a>`
-      + (s.txs.length >= 40 ? ` <b>— your slip carries ${s.txs.length} moves; the courier takes 50, so settle soon.</b>` : '');
+      + (s.txs.length >= 16 ? ` <b>— your slip carries ${s.txs.length} moves; the courier takes about 24, so settle soon.</b>` : '');
     $('#mo-again').after(home);
     $('#mo-again').textContent = purse() >= G ? 'NEW MATCH (same seal)' : 'PURSE TOO THIN';
     if (purse() < G) $('#mo-again').disabled = true;
@@ -729,19 +729,26 @@ async function playHand() {
 drawScore();
 (async () => {
   if (SEAL) {
-    // Slip trimming: arriving from the tidegate with a seal that EQUALS the
-    // stored purse means every move on the slip is applied (pegged reaches
-    // that number only through them) — or the slip no longer chains and can
-    // never be redeemed. Either way those moves are done: archive them and
-    // open the next slip at the seal, so a long night of settling never grows
-    // one slip past the courier's 50-move cap (learned live: 28 moves, 11 KB,
-    // "Bad Request"). Only a seal carried in the URL counts — a reload after a
-    // match strips it, so a coincidental net-zero run is never mistaken for
-    // a settlement.
-    const s0 = loadSeg();
-    if (q.has('seal') && s0.txs.length && purse() === SEAL.seal) {
-      localStorage.setItem(segKey() + '-settled-' + Date.now(), JSON.stringify(s0));
-      saveSeg({ base: SEAL.seal, txs: [] });
+    // Slip trimming: the seal carried in from the tidegate is what the
+    // server holds, and pegged only reaches that number by applying this
+    // slip in order. So walk the stored slip's running balance and cut at
+    // the FIRST point it equals the seal: everything before is applied (or
+    // can never chain again) and is archived; everything after is carried
+    // on — if some of it turns out to be applied too, the server skips
+    // those signatures, so nothing is lost and nothing double-credits.
+    // Why it matters: the slip travels home in a URL, and the front proxy
+    // refuses requests past ~16 KB of headers — a 28-move night was
+    // "Bad Request" before the game ever saw it. Only a seal in the URL
+    // counts; a reload after a match drops it (see the stake below).
+    if (q.has('seal')) {
+      const s0 = loadSeg();
+      let bal = s0.base, k = -1;
+      if (bal === SEAL.seal) k = 0;
+      for (let i = 0; i < s0.txs.length && k < 0; i++) { bal += s0.txs[i].delta; if (bal === SEAL.seal) k = i + 1; }
+      if (k > 0) {
+        localStorage.setItem(segKey() + '-settled-' + Date.now(), JSON.stringify({ base: s0.base, txs: s0.txs.slice(0, k) }));
+        saveSeg({ base: SEAL.seal, txs: s0.txs.slice(k) });
+      }
     }
     // Slip hygiene: the browser may hold a SPENT slip from a settled visit —
     // the stored purse then disagrees with the fresh seal. Only the player
@@ -770,11 +777,12 @@ drawScore();
       caption(`⚠ your purse holds ${purse().toLocaleString()} gold — not enough for a ${G.toLocaleString()}-gold match. <a href="${SEAL.ret}">Return to Tideholm</a> for more.`);
       return;
     }
-    // The courier carries 50 moves at most (a slip is a session, not a
-    // firehose); a match is two. Past 48 the only move is to settle.
+    // The slip rides home in a URL: ~390 bytes a move, and the front proxy
+    // refuses requests past ~16 KB of headers (cookies included). 24 moves
+    // (12 matches, ~9.5 KB) leaves room; past 22 the only play is to settle.
     const carried = loadSeg().txs.length;
-    if (carried >= 48) {
-      caption(`⚠ your slip already carries ${carried} moves — the Tideholm courier takes 50 at most. `
+    if (carried >= 22) {
+      caption(`⚠ your slip already carries ${carried} moves — the courier home takes about 24 at most. `
         + `<a href="${SEAL.ret}?tavern=${b64url(JSON.stringify(loadSeg().txs))}">Settle up at Tideholm first ↗</a>, then come back with a fresh seal.`);
       return;
     }
