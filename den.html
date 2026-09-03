@@ -630,7 +630,8 @@ async function matchOver() {
     const s = loadSeg();
     const home = document.createElement('div');
     home.className = 'sub2';
-    home.innerHTML = `<a href="${SEAL.ret}?tavern=${b64url(JSON.stringify(s.txs))}">Settle up at Tideholm ↗</a>`;
+    home.innerHTML = `<a href="${SEAL.ret}?tavern=${b64url(JSON.stringify(s.txs))}">Settle up at Tideholm ↗</a>`
+      + (s.txs.length >= 40 ? ` <b>— your slip carries ${s.txs.length} moves; the courier takes 50, so settle soon.</b>` : '');
     $('#mo-again').after(home);
     $('#mo-again').textContent = purse() >= G ? 'NEW MATCH (same seal)' : 'PURSE TOO THIN';
     if (purse() < G) $('#mo-again').disabled = true;
@@ -728,6 +729,20 @@ async function playHand() {
 drawScore();
 (async () => {
   if (SEAL) {
+    // Slip trimming: arriving from the tidegate with a seal that EQUALS the
+    // stored purse means every move on the slip is applied (pegged reaches
+    // that number only through them) — or the slip no longer chains and can
+    // never be redeemed. Either way those moves are done: archive them and
+    // open the next slip at the seal, so a long night of settling never grows
+    // one slip past the courier's 50-move cap (learned live: 28 moves, 11 KB,
+    // "Bad Request"). Only a seal carried in the URL counts — a reload after a
+    // match strips it, so a coincidental net-zero run is never mistaken for
+    // a settlement.
+    const s0 = loadSeg();
+    if (q.has('seal') && s0.txs.length && purse() === SEAL.seal) {
+      localStorage.setItem(segKey() + '-settled-' + Date.now(), JSON.stringify(s0));
+      saveSeg({ base: SEAL.seal, txs: [] });
+    }
     // Slip hygiene: the browser may hold a SPENT slip from a settled visit —
     // the stored purse then disagrees with the fresh seal. Only the player
     // knows whether the old moves were redeemed, so a fresh slip is offered,
@@ -755,10 +770,21 @@ drawScore();
       caption(`⚠ your purse holds ${purse().toLocaleString()} gold — not enough for a ${G.toLocaleString()}-gold match. <a href="${SEAL.ret}">Return to Tideholm</a> for more.`);
       return;
     }
+    // The courier carries 50 moves at most (a slip is a session, not a
+    // firehose); a match is two. Past 48 the only move is to settle.
+    const carried = loadSeg().txs.length;
+    if (carried >= 48) {
+      caption(`⚠ your slip already carries ${carried} moves — the Tideholm courier takes 50 at most. `
+        + `<a href="${SEAL.ret}?tavern=${b64url(JSON.stringify(loadSeg().txs))}">Settle up at Tideholm first ↗</a>, then come back with a fresh seal.`);
+      return;
+    }
     caption('signing your stake into the match…');
     try {
       matchId = [...crypto.getRandomValues(new Uint8Array(8))].map((x) => x.toString(16).padStart(2, '0')).join('');
       await signSealTx(-G, { venue: 'den', mark: matchId, stake: G });
+      // The seal in the URL is now stale: drop it so NEW MATCH (a reload)
+      // cannot re-run the arrival trimming against an unsettled purse.
+      if (q.has('seal')) { q.delete('seal'); history.replaceState(null, '', location.pathname + '?' + q.toString()); }
     } catch (e) {
       caption('⚠ could not sign the stake — ' + (e.message || 'signing declined') + '. Nothing has moved.');
       return;
