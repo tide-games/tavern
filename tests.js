@@ -267,6 +267,37 @@ console.log('\nbankroll');
 // ---------------------------------------------------------------- purity
 
 console.log('\npurity');
+console.log('cutSlip');
+{
+  const tx = (prev, delta, sig) => ({ prev, delta, next: prev + delta, sig });
+  // The live fork, 2026-09-11: slip base 800 with two settled moves ending
+  // at 900; a peg-out then took the trail 900 -> 800. By balance the slip's
+  // base matched the seal and both moves were kept, and play forked from 900.
+  const settled = { base: 800, txs: [tx(800, -100, 'A'), tx(700, 200, 'B')], from: 'Z' };
+  let r = t.cutSlip(settled, { seal: 800, tip: 'P' });
+  check('a slip the trail moved past is set aside, not continued (the live fork)',
+    r.reason === 'stale' && r.seg.txs.length === 0 && r.seg.base === 800 && r.seg.from === 'P' && r.archived.length === 2,
+    JSON.stringify(r));
+  check('by balance alone the same slip would have been kept (why the tip exists)',
+    t.cutSlip(settled, { seal: 800 }).seg.txs.length === 2);
+  r = t.cutSlip({ base: 800, txs: [tx(800, -100, 'A'), tx(700, 200, 'B')], from: 'Z' }, { seal: 900, tip: 'B' });
+  check('a fully applied slip is cut to nothing and chains from the tip', r.reason === 'applied' && r.seg.txs.length === 0 && r.seg.from === 'B' && r.seg.base === 900);
+  r = t.cutSlip({ base: 800, txs: [tx(800, -100, 'A'), tx(700, 200, 'B'), tx(900, -100, 'C')], from: 'Z' }, { seal: 900, tip: 'B' });
+  check('a partly applied slip keeps the moves after the tip', r.reason === 'applied' && r.seg.txs.length === 1 && r.seg.txs[0].sig === 'C' && r.archived.length === 2);
+  r = t.cutSlip({ base: 800, txs: [tx(800, -100, 'A')], from: 'Z' }, { seal: 800, tip: 'Z' });
+  check('an unsettled slip whose tip has not moved is untouched', r.reason === 'unsettled' && r.seg.txs.length === 1);
+  r = t.cutSlip({ base: 800, txs: [tx(800, -100, 'A')], from: 'Z' }, { seal: 500, tip: 'Z' });
+  check('same tip but a different seal is impossible — set aside', r.reason === 'stale');
+  r = t.cutSlip({ base: 300, txs: [] }, { seal: 300, tip: 'Q' });
+  check('an empty slip adopts the seal and the tip', r.reason === 'fresh' && r.seg.from === 'Q');
+  r = t.cutSlip({ base: 800, txs: [tx(800, -100, 'A')] }, { seal: 800, tip: 'P' });
+  check('a slip from before tips existed is adopted once if it chains from the seal', r.reason === 'adopted' && r.seg.from === 'P' && r.seg.txs.length === 1);
+  r = t.cutSlip({ base: 800, txs: [tx(900, -100, 'A')] }, { seal: 800, tip: 'P' });
+  check('...but not if its first move does not chain from the seal', r.reason === 'stale');
+  r = t.cutSlip({ base: 800, txs: [tx(800, -100, 'A'), tx(700, 200, 'B')] }, { seal: 900 });
+  check('without a tip the balance rule still cuts', r.reason === 'balance' && r.seg.txs.length === 0 && r.seg.from === 'B');
+}
+
 {
   const src = await (await import('node:fs/promises')).readFile(new URL('./tavern.js', import.meta.url), 'utf8');
   const body = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');

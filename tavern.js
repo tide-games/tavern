@@ -230,3 +230,41 @@ export function expectedBankReturn(target, opts = {}) {
   // lose q.risk with probability `chance`, keep 1 with probability 1-chance
   return (1 - q.chance) * 1 - q.chance * q.risk;
 }
+
+// ---------------------------------------------------------------- the slip cut
+//
+// A venue keeps a slip: { base, txs, from } — the seal it started from, the
+// signed moves since, and the identity (`from`) of the trail move the slip
+// chains onto. On every arrival from the tidegate the slip must be CUT to
+// what the trail has not yet applied. The tidegate names its tip: the
+// signature of the trail's last move (or `seq:N` for an unsigned one).
+//
+// Why an identity and not a number: a slip that ended at 900 and a peg-out
+// that brought the seal back to 800 look identical by balance, and a slip
+// cut by balance kept its settled moves and forked from the trail (learned
+// live, 2026-09-11). A signature is unique per signing; a balance recurs.
+//
+// Returns { seg, archived, reason }. `archived` are moves the slip drops:
+// applied ones (safe — the trail has them) or, when the trail moved past
+// the slip, unsettled ones that can never chain again (reason 'stale').
+// Without a tip (an older tidegate) the balance rule stands, once.
+export function cutSlip(seg, { seal, tip } = {}) {
+  const s = { base: Number(seg && seg.base) || 0, txs: Array.isArray(seg && seg.txs) ? seg.txs.slice() : [], from: seg ? seg.from : undefined };
+  const fresh = (reason) => ({ seg: { base: seal, txs: [], from: tip }, archived: s.txs, reason });
+  if (!tip) {
+    let bal = s.base, k = -1;
+    if (bal === seal) k = 0;
+    for (let i = 0; i < s.txs.length && k < 0; i++) { bal += s.txs[i].delta; if (bal === seal) k = i + 1; }
+    if (k > 0) return { seg: { base: seal, txs: s.txs.slice(k), from: s.txs[k - 1].sig }, archived: s.txs.slice(0, k), reason: 'balance' };
+    return { seg: s, archived: [], reason: k === 0 ? 'unchanged' : 'nomatch' };
+  }
+  const i = s.txs.findIndex((t) => t && t.sig === tip);
+  if (i >= 0) return { seg: { base: seal, txs: s.txs.slice(i + 1), from: tip }, archived: s.txs.slice(0, i + 1), reason: 'applied' };
+  if (!s.txs.length) return { seg: { base: seal, txs: [], from: tip }, archived: [], reason: 'fresh' };
+  if (s.from === tip) return s.base === seal ? { seg: s, archived: [], reason: 'unsettled' } : fresh('stale');
+  // A slip from before tips existed: adopt it once if it chains from the seal.
+  if (s.from === undefined && s.base === seal && s.txs[0].prev === seal) {
+    return { seg: { ...s, from: tip }, archived: [], reason: 'adopted' };
+  }
+  return fresh('stale');
+}

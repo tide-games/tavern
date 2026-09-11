@@ -393,6 +393,7 @@ a{color:#5fc7d6}
 import { newHand, legal, act, evaluate, bestFive, handName, rankOf, suitOf, RANKS, rngFromSeed } from 'https://librepoker.org/play/engine/poker.js';
 import { ladderDecide, setEquityEdges } from 'https://librepoker.org/play/engine/ladder.js';
 import { riverMix } from 'https://librepoker.org/play/engine/river-solver.js';
+import { cutSlip } from './tavern.js';
 
 const $ = (s) => document.querySelector(s);
 const q = new URLSearchParams(location.search);
@@ -412,6 +413,7 @@ const SEAL = (() => {
   return {
     did,
     seal: Math.max(0, Math.floor(Number(q.get('seal')) || 0)),
+    tip: (q.get('tip') || '').trim() || null, // the trail's last move, from the tidegate
     ret: q.get('return') || 'https://nostr.social/tideholm/',
   };
 })();
@@ -729,25 +731,25 @@ async function playHand() {
 drawScore();
 (async () => {
   if (SEAL) {
-    // Slip trimming: the seal carried in from the tidegate is what the
-    // server holds, and pegged only reaches that number by applying this
-    // slip in order. So walk the stored slip's running balance and cut at
-    // the FIRST point it equals the seal: everything before is applied (or
-    // can never chain again) and is archived; everything after is carried
-    // on — if some of it turns out to be applied too, the server skips
-    // those signatures, so nothing is lost and nothing double-credits.
-    // Why it matters: the slip travels home in a URL, and the front proxy
-    // refuses requests past ~16 KB of headers — a 28-move night was
-    // "Bad Request" before the game ever saw it. Only a seal in the URL
-    // counts; a reload after a match drops it (see the stake below).
+    // Slip cutting: the tidegate names its trail tip (the signature of the
+    // last applied move), and the stored slip is cut THERE — everything up
+    // to the tip is applied and archived, everything after is carried on.
+    // A slip the trail moved past (a peg, another venue) can never chain
+    // again: it is set aside and play starts fresh from the seal. Without a
+    // tip (an older tidegate) the old balance rule stands. See cutSlip.
+    // Only a seal in the URL counts; a reload after a match drops it.
     if (q.has('seal')) {
       const s0 = loadSeg();
-      let bal = s0.base, k = -1;
-      if (bal === SEAL.seal) k = 0;
-      for (let i = 0; i < s0.txs.length && k < 0; i++) { bal += s0.txs[i].delta; if (bal === SEAL.seal) k = i + 1; }
-      if (k > 0) {
-        localStorage.setItem(segKey() + '-settled-' + Date.now(), JSON.stringify({ base: s0.base, txs: s0.txs.slice(0, k) }));
-        saveSeg({ base: SEAL.seal, txs: s0.txs.slice(k) });
+      const r = cutSlip(s0, { seal: SEAL.seal, tip: SEAL.tip });
+      if (r.archived.length) {
+        localStorage.setItem(segKey() + (r.reason === 'stale' ? '-stale-' : '-settled-') + Date.now(), JSON.stringify({ base: s0.base, txs: r.archived }));
+      }
+      if (r.reason !== 'unchanged' && r.reason !== 'nomatch' && r.reason !== 'unsettled') saveSeg(r.seg);
+      if (r.reason === 'stale') {
+        const net = r.archived.reduce((a, t) => a + t.delta, 0);
+        caption(`⚠ A slip from an earlier visit could not follow the seal — the tidegate moved on (a peg, or another game) while it was open. `
+          + `Its ${r.archived.length} unsettled move${r.archived.length > 1 ? 's' : ''} (net ${net >= 0 ? '+' : ''}${net.toLocaleString()}) were set aside; `
+          + `play starts fresh from <b>${SEAL.seal.toLocaleString()}</b> gold.`);
       }
     }
     // Slip hygiene: the browser may hold a SPENT slip from a settled visit —

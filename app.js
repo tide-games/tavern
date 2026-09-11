@@ -151,6 +151,7 @@ const SEAL = (() => {
   return {
     did,
     seal: Math.max(0, Math.floor(Number(qp.get('seal')) || 0)),
+    tip: (qp.get('tip') || '').trim() || null, // the trail's last move, from the tidegate
     ret: qp.get('return') || 'https://nostr.social/tideholm/',
   };
 })();
@@ -230,7 +231,7 @@ function paintSeal() {
     ev.preventDefault();
     const cur = loadSeg();
     if (cur.txs.length) archiveSlip(cur.txs); // the book keeps what the slip settled
-    saveSeg({ base: purse(), txs: [] });      // the purse carries over; the moves are spent
+    saveSeg({ base: purse(), txs: [], from: cur.txs.length ? cur.txs[cur.txs.length - 1].sig : cur.from }); // the purse carries over; the moves are spent
     paintSeal(); paintLog();
   });
   slip.appendChild(wipe);
@@ -576,6 +577,20 @@ for (const id of ['target', 'stake']) $(id).addEventListener('input', paintQuote
   $('tide-nonce').value = qp.get('mark') || randomSeed().slice(0, 16);
 }
 
+// On arrival from the tidegate, cut the stored slip at the trail's tip: what
+// the trail has applied is archived to the book, what it moved past is set
+// aside (it can never chain again), the rest is carried on. See cutSlip.
+if (SEAL && new URLSearchParams(location.search).has('seal')) {
+  const s0 = loadSeg();
+  const r = T.cutSlip(s0, { seal: SEAL.seal, tip: SEAL.tip });
+  if (r.archived.length) archiveSlip(r.archived);
+  if (r.reason !== 'unchanged' && r.reason !== 'nomatch' && r.reason !== 'unsettled') saveSeg(r.seg);
+  if (r.reason === 'stale') {
+    const net = r.archived.reduce((a, t) => a + t.delta, 0);
+    sayTide(`A slip from an earlier visit could not follow the seal — the tidegate moved on while it was open. `
+      + `${r.archived.length} unsettled move${r.archived.length > 1 ? 's' : ''} (net ${net >= 0 ? '+' : ''}${fmt(net)}) set aside; the purse starts fresh at ${fmt(SEAL.seal)}.`, true);
+  }
+}
 paintBank();
 newRound();
 paintTide();
