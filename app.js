@@ -312,13 +312,17 @@ function paintLog() {
 
 // ---------------------------------------------------------------- the tide
 //
-// The block-seed wager. The seed is the hash of the next testnet4 block: it
+// The block-seed wager. The seed is the hash of the next txbt4 block: it
 // does not exist at bet time, so there is nothing for any house to commit to
 // or shop for — the chain is the commitment. The player's mark still salts the
 // roll, so bets riding the same block get different dice. This is the one part
 // of the page that touches the network, and only when a button is pressed.
 
-const TIDE_API = 'https://mempool.space/testnet4/api';
+// txbt4 — XBT's testnet4, the BLAKE2b fork mempool.guide follows and the whole
+// fleet settles on. Which chain is part of the proof: above the fork the same
+// height names a different block on plain testnet4, and Tideholm verifies a
+// win against txbt4, so a bet seeded from another chain would never pay.
+const TIDE_API = 'https://mempool.guide/testnet4/api';
 const TIDE_KEY = 'tavern-tide-bets';
 
 function loadTide() {
